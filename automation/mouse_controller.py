@@ -37,6 +37,8 @@ class MouseController:
     use_drag : bool
         If ``True``, use drag-and-drop.  If ``False``, click source then
         click destination.
+    site : str
+        The chess site being used ("chess.com" or "lichess.org").
     """
 
     def __init__(
@@ -44,11 +46,13 @@ class MouseController:
         square_mapper: SquareMapper,
         humanizer: Humanizer,
         use_drag: bool = True,
+        site: str = "chess.com",
     ) -> None:
         self.mapper = square_mapper
         self.human = humanizer
         self.use_drag = use_drag
-        log.info("MouseController ready — mode=%s", "drag" if use_drag else "click-click")
+        self.site = site
+        log.info("MouseController ready — site=%s mode=%s", site, "drag" if use_drag else "click-click")
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -197,23 +201,27 @@ class MouseController:
     def _handle_promotion(self, piece: str, pos: Tuple[int, int]) -> None:
         """
         Attempt to select a promotion piece.
-
-        On chess.com, a promotion menu pops up when a pawn reaches the
-        last rank.  The menu shows Queen/Rook/Bishop/Knight vertically.
-        We click the appropriate option based on the piece character.
         """
         sq_size = self.mapper.square_h
         piece_lower = piece.lower()
-
-        # Offset from the promotion square (roughly):
-        # Queen = 0, Knight = 1, Rook = 2, Bishop = 3 squares below
+        
+        # Promotion menu offsets (multiples of square size)
+        # Queen, Knight, Rook, Bishop
         offsets = {"q": 0, "n": 1, "r": 2, "b": 3}
         offset_idx = offsets.get(piece_lower, 0)
 
         promo_x = pos[0]
-        promo_y = pos[1] + int(offset_idx * sq_size)
+        
+        if self.site == "chess.com":
+            # Chess.com: vertical menu below the promotion square
+            promo_y = pos[1] + int(offset_idx * sq_size)
+        else:
+            # Lichess.org: vertical menu, but direction depends on color/orientation
+            # Typically, it expands towards the middle of the board.
+            direction = 1 if pos[1] < self.mapper.top_left[1] + self.mapper.board_height / 2 else -1
+            promo_y = pos[1] + int(offset_idx * sq_size * direction)
 
-        log.info("Selecting promotion piece '%s' at (%d, %d)", piece, promo_x, promo_y)
+        log.info("Selecting promotion piece '%s' at (%d, %d) on %s", piece, promo_x, promo_y, self.site)
         self._smooth_move(pos, (promo_x, promo_y))
         
         if not self.human.bullet_mode:

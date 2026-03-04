@@ -79,6 +79,7 @@ class Config:
     # -- CDP (Chrome DevTools Protocol) ------------------------------------
     chrome_debug_port: int = 9222              # Chrome remote debugging port
     use_dom_reader: bool = True                # Use DOM reader instead of vision
+    detected_site: str = "chess.com"           # "chess.com" or "lichess.org"
 
     # -- Calibration (populated at runtime) --------------------------------
     board_top_left: Optional[tuple[int, int]] = None

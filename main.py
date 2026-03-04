@@ -93,6 +93,7 @@ class ChessBot:
             square_mapper=mapper,
             humanizer=humanizer,
             use_drag=self.cfg.use_drag,
+            site=self.cfg.detected_site,
         )
 
         self.log = get_logger("ChessBot")
@@ -184,9 +185,15 @@ class ChessBot:
                 "\n❌  Cannot connect to Chrome.\n"
                 "    Launch Chrome with:\n"
                 "    chrome.exe --remote-debugging-port=9222 --remote-allow-origins=*\n"
-                "    Then navigate to Chess.com and start a game.\n"
+                "    Then navigate to Chess.com or Lichess.org and start a game.\n"
             )
             return
+
+        # Synchronize detected site
+        self.cfg.detected_site = self.game_reader.site
+        self.mouse.site = self.game_reader.site
+        self.log.info("Site detected: %s", self.cfg.detected_site)
+        print(f"✅  Connected to {self.cfg.detected_site}")
 
         # Auto-detect player color and update mapper
         self._detect_and_set_color()

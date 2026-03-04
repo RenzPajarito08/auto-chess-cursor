@@ -1,11 +1,11 @@
 """
-automation/game_state_reader.py — Read game state from Chess.com via CDP.
+automation/game_state_reader.py — Read game state from Chess.com or Lichess.org via CDP.
 
 Connects to a Chrome instance with ``--remote-debugging-port`` enabled,
-reads the move list from the ``<wc-simple-move-list>`` web component,
+reads the move list from site-specific web components or DOM elements,
 and reconstructs the exact FEN using ``python-chess``.
 
-This replaces the unreliable vision-based FEN detection with a 100%
+This replaces unreliable vision-based FEN detection with a 100%
 accurate game state derived from the DOM.
 """
 
@@ -43,6 +43,7 @@ class GameStateReader:
         self._last_move_count = 0  # Track how many moves we've seen
         self._board = chess.Board()  # Tracks the true game state
         self._our_move_count = 0  # How many moves WE have played
+        self.site = "chess.com"  # Default site
 
     # ------------------------------------------------------------------ #
     # Connection
@@ -61,18 +62,22 @@ class GameStateReader:
             )
             pages = resp.json()
 
-            # Find a Chess.com page
+            # Find a supported chess site page
             target = None
             for page in pages:
-                url = page.get("url", "")
+                url = page.get("url", "").lower()
                 if "chess.com" in url:
                     target = page
+                    self.site = "chess.com"
+                    break
+                elif "lichess.org" in url:
+                    target = page
+                    self.site = "lichess.org"
                     break
 
             if target is None:
                 log.error(
-                    "No Chess.com tab found among %d pages. "
-                    "Make sure Chess.com is open in Chrome.",
+                    "No supported chess tab (Chess.com or Lichess.org) found among %d pages.",
                     len(pages),
                 )
                 return False
@@ -163,44 +168,62 @@ class GameStateReader:
         Returns a list of SAN moves like ``['d4', 'd5', 'Nc3', 'c6', ...]``
         or ``None`` on failure.
         """
-        # Improved JS to capture figurines via data-figurine attribute
-        js = """
-        (() => {
-            const moveList = document.querySelector('wc-simple-move-list, move-list');
-            if (moveList) {
-                const plys = moveList.querySelectorAll('.node');
-                const moves = [];
-                for (const ply of plys) {
-                    // Look for figurine span
-                    const figurine = ply.querySelector('[data-figurine]');
-                    const figChar = figurine ? figurine.getAttribute('data-figurine') : '';
-                    
-                    const textNode = ply.querySelector('.node-highlight-content');
-                    const text = textNode ? textNode.textContent.trim() : '';
-                    
-                    if (figChar || text) {
+        if self.site == "chess.com":
+            js = r"""
+            (() => {
+                const moveList = document.querySelector('wc-simple-move-list, move-list');
+                if (moveList) {
+                    const plys = moveList.querySelectorAll('.node');
+                    const moves = [];
+                    for (const ply of plys) {
+                        const figurine = ply.querySelector('[data-figurine]');
+                        const figChar = figurine ? figurine.getAttribute('data-figurine') : '';
+                        const textNode = ply.querySelector('.node-highlight-content');
+                        const text = textNode ? textNode.textContent.trim() : '';
+                        if (figChar || text) moves.push(figChar + text);
+                    }
+                    return JSON.stringify(moves);
+                }
+                const verticalMoves = document.querySelectorAll('.move-text-component, .move-node');
+                if (verticalMoves.length > 0) {
+                    const moves = [];
+                    for (const node of verticalMoves) {
+                        const fig = node.querySelector('[data-figurine]');
+                        const figChar = fig ? fig.getAttribute('data-figurine') : '';
+                        let text = node.textContent.trim();
                         moves.push(figChar + text);
                     }
+                    return JSON.stringify(moves);
                 }
-                return JSON.stringify(moves);
-            }
-
-            // Fallback: try vertical move list styles
-            const verticalMoves = document.querySelectorAll('.move-text-component, .move-node');
-            if (verticalMoves.length > 0) {
+                return null;
+            })()
+            """
+        else: # lichess.org
+            js = r"""
+            (() => {
+                // Lichess standard move list (handling obfuscated tags like kwdb)
                 const moves = [];
-                for (const node of verticalMoves) {
-                    const fig = node.querySelector('[data-figurine]');
-                    const figChar = fig ? fig.getAttribute('data-figurine') : '';
-                    let text = node.textContent.trim();
-                    moves.push(figChar + text);
+                // Look for common Lichess move containers and tags
+                const plys = document.querySelectorAll('l_move, .moves move, m2, kwdb, l4x > *');
+                if (plys.length > 0) {
+                    for (const ply of plys) {
+                        // Skip move numbers (often tags like INDEX, i5z, or classes like index)
+                        if (ply.tagName === 'INDEX' || 
+                            ply.tagName === 'I5Z' || 
+                            ply.classList.contains('index') ||
+                            /^\d+\.?$/.test(ply.textContent.trim())) {
+                            continue;
+                        }
+                        const text = ply.textContent.trim();
+                        if (text && text.length <= 10) { // Safety check for SAN length
+                            moves.push(text);
+                        }
+                    }
+                    return JSON.stringify(moves);
                 }
-                return JSON.stringify(moves);
-            }
-
-            return null;
-        })()
-        """
+                return null;
+            })()
+            """
 
         raw = self._evaluate_js(js)
         if raw is None:
@@ -338,38 +361,62 @@ class GameStateReader:
     # ------------------------------------------------------------------ #
     def detect_player_color(self) -> Optional[str]:
         """
-        Detect which color the player is by checking the board orientation
-        in the DOM.
+        Detect which color the player is by checking the board orientation.
         """
-        js = """
-        (() => {
-            // Chess.com board selectors
-            const selectors = [
-                'wc-chess-board',
-                'chess-board',
-                '#board-layout-main',
-                '.board',
-                '[id^="board-"]',
-                '.kb-board'
-            ];
-            
-            for (const sel of selectors) {
-                const board = document.querySelector(sel);
-                if (board) {
-                    // is-flipped class or flipped attribute is common on chess.com
-                    const isFlipped = board.classList.contains('flipped') || 
-                                     board.classList.contains('is-flipped') ||
-                                     board.classList.contains('flipped-board') ||
-                                     board.getAttribute('flipped') === 'true';
-                    return isFlipped ? 'black' : 'white';
+        if self.site == "chess.com":
+            js = r"""
+            (() => {
+                const selectors = ['wc-chess-board', 'chess-board', '#board-layout-main', '.board', '[id^="board-"]', '.kb-board'];
+                for (const sel of selectors) {
+                    const board = document.querySelector(sel);
+                    if (board) {
+                        const isFlipped = board.classList.contains('flipped') || 
+                                         board.classList.contains('is-flipped') ||
+                                         board.classList.contains('flipped-board') ||
+                                         board.getAttribute('flipped') === 'true';
+                        return isFlipped ? 'black' : 'white';
+                    }
                 }
-            }
-            return null;
-        })()
-        """
+                return null;
+            })()
+            """
+        else: # lichess.org
+            js = r"""
+            (() => {
+                // 1. Primary check: orientation class on wrap or board
+                // Lichess uses 'orientation-black' or 'orientation-white'
+                const orientationElem = document.querySelector('.orientation-black, .orientation-white, .cg-wrap, .cg-board, cg-container');
+                if (orientationElem) {
+                    if (orientationElem.classList.contains('orientation-black') || 
+                        orientationElem.closest('.orientation-black')) {
+                        return 'black';
+                    }
+                    if (orientationElem.classList.contains('orientation-white') || 
+                        orientationElem.closest('.orientation-white')) {
+                        return 'white';
+                    }
+                }
+
+                // 2. Secondary check: coordinates
+                const blackCoords = document.querySelector('coords.black, .coords.black');
+                if (blackCoords) return 'black';
+                
+                const whiteCoords = document.querySelector('coords.white, .coords.white');
+                if (whiteCoords) return 'white';
+
+                // 3. Fallback: player status labels
+                const blackBottom = document.querySelector('.player.black.bottom, .ruser-bottom.black, .player-bottom.black');
+                if (blackBottom) return 'black';
+
+                const whiteBottom = document.querySelector('.player.white.bottom, .ruser-bottom.white, .player-bottom.white');
+                if (whiteBottom) return 'white';
+
+                return null;
+            })()
+            """
         result = self._evaluate_js(js)
         if result:
-            log.info("Detected board orientation: %s (isFlipped=%s)", result, result == 'black')
+            log.info("Detected board orientation on %s: %s", self.site, result)
         return result
 
     # ------------------------------------------------------------------ #

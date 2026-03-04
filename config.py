@@ -38,7 +38,7 @@ class Config:
     stockfish_time_limit: float = 2.0          # seconds per move
     stockfish_threads: int = 1
     stockfish_hash_mb: int = 16
-    stockfish_skill_level: int = 6             # 0-20
+    stockfish_skill_level: int = 5             # 0-20
 
     # -- Player -----------------------------------------------------------
     player_color: str = "white"                # "white" or "black"

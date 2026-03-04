@@ -43,7 +43,7 @@ class StockfishEngine:
         time_limit: float = 2.0,
         threads: int = 1,
         hash_mb: int = 16,
-        skill_level: int = 6,
+        skill_level: int = 5,
     ) -> None:
         self.path = Path(path)
         self.depth = depth

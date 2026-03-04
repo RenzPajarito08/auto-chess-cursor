@@ -10,7 +10,7 @@ Usage:
     3. Run:  python main.py
 
 Hotkeys (while running):
-    Ctrl+P  —  Pause / Resume
+    Ctrl+M  —  Pause / Resume
     Ctrl+Q  —  Quit
     Mouse to top-left corner  —  Emergency stop
 """
@@ -129,10 +129,12 @@ class ChessBot:
         """Register pause and quit hotkeys."""
         keyboard.add_hotkey(self.cfg.pause_hotkey, self._toggle_pause)
         keyboard.add_hotkey(self.cfg.quit_hotkey, self._quit)
+        keyboard.add_hotkey(self.cfg.bullet_hotkey, self._toggle_bullet_mode)
         self.log.info(
-            "Hotkeys registered — Pause: %s  |  Quit: %s",
+            "Hotkeys registered — Pause: %s  |  Quit: %s  |  Bullet Mode: %s",
             self.cfg.pause_hotkey,
             self.cfg.quit_hotkey,
+            self.cfg.bullet_hotkey,
         )
 
     def _toggle_pause(self) -> None:
@@ -144,6 +146,14 @@ class ChessBot:
     def _quit(self) -> None:
         self.log.info("🛑  Quit hotkey pressed")
         self.running = False
+
+    def _toggle_bullet_mode(self) -> None:
+        """Toggle fast bullet mode."""
+        self.mouse.human.bullet_mode = not self.mouse.human.bullet_mode
+        state = "ENABLED" if self.mouse.human.bullet_mode else "DISABLED"
+        icon = "🚀" if self.mouse.human.bullet_mode else "⚖️"
+        self.log.info("%s  Bullet Mode %s", icon, state)
+        print(f"\n{icon} Bullet Mode {state}")
 
     # ------------------------------------------------------------------ #
     # Main loop
@@ -226,7 +236,9 @@ class ChessBot:
                         break
                     time.sleep(1.0)
 
-                time.sleep(self.cfg.move_check_interval)
+                # Move check interval is shorter in bullet mode
+                interval = 0.05 if self.mouse.human.bullet_mode else self.cfg.move_check_interval
+                time.sleep(interval)
 
         finally:
             self.engine.quit()
@@ -307,7 +319,8 @@ class ChessBot:
         self.log.info("Move #%d complete (%s)", self.move_count, best_move)
 
         # Give the DOM a moment to update with our move
-        time.sleep(0.5)
+        delay = 0.1 if self.mouse.human.bullet_mode else 0.5
+        time.sleep(delay)
 
         # Re-read game state to sync our tracking
         updated_state = self.game_reader.get_game_state()
@@ -328,8 +341,9 @@ class ChessBot:
         print("╔═══════════════════════════════════════════════╗")
         print("║     ♟  Auto Chess — Desktop Edition  ♟       ║")
         print("║                                               ║")
-        print("║   Ctrl+P = Pause/Resume                       ║")
+        print("║   Ctrl+M = Pause/Resume                       ║")
         print("║   Ctrl+Q = Quit                               ║")
+        print("║   Ctrl+B = Bullet Mode (1m games)             ║")
         print("║   Mouse → top-left corner = Emergency stop    ║")
         print("╚═══════════════════════════════════════════════╝")
         print()

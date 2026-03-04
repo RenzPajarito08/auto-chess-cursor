@@ -62,8 +62,9 @@ class Config:
     use_drag: bool = True                      # True = drag, False = click-click
 
     # -- Hotkeys ----------------------------------------------------------
-    pause_hotkey: str = "ctrl+p"
+    pause_hotkey: str = "ctrl+m"
     quit_hotkey: str = "ctrl+q"
+    bullet_hotkey: str = "ctrl+b"
     emergency_corner_size: int = 5             # px – top-left corner zone
 
     # -- Logging ----------------------------------------------------------

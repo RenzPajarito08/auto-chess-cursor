@@ -115,18 +115,24 @@ class MouseController:
         # Move to source via Bézier curve
         current = pyautogui.position()
         self._smooth_move(current, from_pos)
-        time.sleep(0.05)
+        
+        if not self.human.bullet_mode:
+            time.sleep(0.05)
 
         # Pick up
         pyautogui.mouseDown(button="left")
-        time.sleep(random_small())
+        
+        if not self.human.bullet_mode:
+            time.sleep(random_small())
 
         # Optional hesitation
         self.human.maybe_hesitate()
 
         # Drag to destination via Bézier curve
         self._smooth_move(from_pos, to_pos)
-        time.sleep(random_small())
+        
+        if not self.human.bullet_mode:
+            time.sleep(random_small())
 
         # Release
         pyautogui.mouseUp(button="left")
@@ -139,18 +145,23 @@ class MouseController:
 
         # Click source
         self._smooth_move(current, from_pos)
-        time.sleep(0.05)
+        if not self.human.bullet_mode:
+            time.sleep(0.05)
         pyautogui.click(from_pos[0], from_pos[1])
 
         # Brief pause between clicks
-        time.sleep(0.1 + random_small())
+        if not self.human.bullet_mode:
+            time.sleep(0.1 + random_small())
+        else:
+            time.sleep(0.02)
 
         # Optional hesitation
         self.human.maybe_hesitate()
 
         # Click destination
         self._smooth_move(from_pos, to_pos)
-        time.sleep(0.05)
+        if not self.human.bullet_mode:
+            time.sleep(0.05)
         pyautogui.click(to_pos[0], to_pos[1])
 
     # ------------------------------------------------------------------ #
@@ -204,7 +215,10 @@ class MouseController:
 
         log.info("Selecting promotion piece '%s' at (%d, %d)", piece, promo_x, promo_y)
         self._smooth_move(pos, (promo_x, promo_y))
-        time.sleep(0.1)
+        
+        if not self.human.bullet_mode:
+            time.sleep(0.1)
+            
         pyautogui.click(promo_x, promo_y)
 
     # ------------------------------------------------------------------ #

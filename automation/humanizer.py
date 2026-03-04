@@ -64,6 +64,7 @@ class Humanizer:
         self.hesitation_min = hesitation_min
         self.hesitation_max = hesitation_max
         self.bezier_variance = bezier_variance
+        self.bullet_mode = False
 
     # ------------------------------------------------------------------ #
     # Timing
@@ -75,14 +76,22 @@ class Humanizer:
         The delay follows a normal distribution clamped to
         ``[think_delay_min, think_delay_max]``.
         """
-        delay = random.gauss(self.think_delay_mean, self.think_delay_std)
-        delay = max(self.think_delay_min, min(self.think_delay_max, delay))
+        if self.bullet_mode:
+            # Bullet mode: 50ms to 150ms delay
+            delay = random.uniform(0.05, 0.15)
+        else:
+            delay = random.gauss(self.think_delay_mean, self.think_delay_std)
+            delay = max(self.think_delay_min, min(self.think_delay_max, delay))
+            
         log.debug("Thinking for %.2fs", delay)
         time.sleep(delay)
         return delay
 
     def move_duration(self) -> float:
         """Return a random duration for a mouse move (not including pauses)."""
+        if self.bullet_mode:
+            # Bullet mode: fast movement (0.08s to 0.15s)
+            return random.uniform(0.08, 0.15)
         return random.uniform(self.move_duration_min, self.move_duration_max)
 
     def maybe_hesitate(self) -> bool:
@@ -91,6 +100,9 @@ class Humanizer:
 
         Returns ``True`` if a hesitation actually occurred.
         """
+        if self.bullet_mode:
+            return False
+            
         if random.random() < self.hesitation_prob:
             pause = random.uniform(self.hesitation_min, self.hesitation_max)
             log.debug("Hesitating for %.2fs", pause)

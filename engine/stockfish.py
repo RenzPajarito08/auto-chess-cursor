@@ -43,6 +43,7 @@ class StockfishEngine:
         time_limit: float = 2.0,
         threads: int = 1,
         hash_mb: int = 16,
+        skill_level: int = 6,
     ) -> None:
         self.path = Path(path)
         self.depth = depth
@@ -50,6 +51,7 @@ class StockfishEngine:
         self._engine: Optional[chess.engine.SimpleEngine] = None
         self._threads = threads
         self._hash_mb = hash_mb
+        self._skill_level = skill_level
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -73,11 +75,13 @@ class StockfishEngine:
         self._engine.configure({
             "Threads": self._threads,
             "Hash": self._hash_mb,
+            "Skill Level": self._skill_level,
         })
         log.info(
-            "Stockfish ready — threads=%d  hash=%dMB  depth=%d  time=%.1fs",
+            "Stockfish ready — threads=%d  hash=%dMB  skill=%d  depth=%d  time=%.1fs",
             self._threads,
             self._hash_mb,
+            self._skill_level,
             self.depth,
             self.time_limit,
         )

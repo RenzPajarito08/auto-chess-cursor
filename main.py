@@ -66,6 +66,7 @@ class ChessBot:
             time_limit=self.cfg.stockfish_time_limit,
             threads=self.cfg.stockfish_threads,
             hash_mb=self.cfg.stockfish_hash_mb,
+            skill_level=self.cfg.stockfish_skill_level,
         )
 
         mapper = SquareMapper(

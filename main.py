@@ -53,7 +53,7 @@ class ChessBot:
         self._last_total_moves: int = -1  # Total moves seen in the DOM (-1 = not yet started)
         self._game_over_detected_at: float = 0.0  # Timestamp when game-over button first seen
         self._game_over_delay: float = 0.0  # Random delay before clicking next game
-        self._pending_color_detection: bool = False  # True when we need to re-detect color for a new game
+        self._pending_color_detection: bool = True  # Start with True to detect on first game
 
         # --- Build subsystems ---
         self._validate_config()
@@ -255,6 +255,7 @@ class ChessBot:
 
         # Auto-detect player color and update mapper
         self._detect_and_set_color()
+        self._pending_color_detection = True # Re-flag so it checks again once game starts
 
         # Read initial game state
         state = self.game_reader.get_game_state()
@@ -346,17 +347,15 @@ class ChessBot:
         #    We detect color HERE (on the live board) instead of during
         #    the game transition, because the old board may still be showing
         #    when _handle_new_game() runs.
-        if self._pending_color_detection and total_moves <= 1:
+        if self._pending_color_detection and (total_moves <= 1 or self._last_total_moves == -1):
             self.log.info(
-                "New game board is live (%d moves). Detecting color now...",
+                "Detecting/Synchronizing player color (Moves: %d)...",
                 total_moves,
             )
             self._detect_and_set_color()
             self._pending_color_detection = False
-            # Reset game state reader to match the fresh detection
-            self.game_reader.reset_game_state()
-            self._last_total_moves = -1
-            return  # Re-enter on next tick with clean state
+            # If we just detected color at move 0/1, we should effectively "start" here
+            return
 
         # 1.1 Check for game reset (new game started or page refreshed)
         # Only trigger on SIGNIFICANT drops — a fresh game has 0-2 moves.

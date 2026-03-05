@@ -68,7 +68,7 @@ class Humanizer:
         
         # Bullet mode optimizations
         self.long_thought_count = 0
-        self.max_long_thoughts = random.randint(6, 10)
+        self.max_long_thoughts = random.randint(6, 8)
         self.last_game_id = None  # To reset counts between games if needed
 
     # ------------------------------------------------------------------ #

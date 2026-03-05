@@ -81,13 +81,49 @@ class Config:
     use_dom_reader: bool = True                # Use DOM reader instead of vision
     detected_site: str = "chess.com"           # "chess.com" or "lichess.org"
 
-    # -- Calibration (populated at runtime) --------------------------------
+    # -- Calibration (populated at runtime, per-site) -----------------------
+    # Maps site name to its calibration data
+    site_configs: dict[str, dict] = field(default_factory=lambda: {
+        "chess.com": {"top_left": None, "bottom_right": None, "player_color": "white"},
+        "lichess.org": {"top_left": None, "bottom_right": None, "player_color": "white"}
+    })
+
+    # Backward compatibility / Active session state
     board_top_left: Optional[tuple[int, int]] = None
     board_bottom_right: Optional[tuple[int, int]] = None
 
     # ------------------------------------------------------------------ #
     # Helpers
     # ------------------------------------------------------------------ #
+    def get_templates_dir(self, site: Optional[str] = None) -> Path:
+        """Return the site-specific template directory."""
+        site = site or self.detected_site
+        # Normalize site name for folder structure
+        folder = site.replace(".", "_").replace(" ", "_")
+        return TEMPLATES_DIR / folder
+
+    def apply_site_config(self, site: str) -> bool:
+        """
+        Load the calibration for a specific site into the active session state.
+        Returns True if calibration was found and applied.
+        """
+        cfg = self.site_configs.get(site)
+        if cfg and cfg.get("top_left"):
+            self.board_top_left = tuple(cfg["top_left"])
+            self.board_bottom_right = tuple(cfg["bottom_right"])
+            self.player_color = cfg.get("player_color", self.player_color)
+            return True
+        return False
+
+    def update_site_config(self, site: str, top_left: tuple[int, int], bottom_right: tuple[int, int], player_color: str) -> None:
+        """Update and persist calibration for a specific site."""
+        self.site_configs[site] = {
+            "top_left": list(top_left),
+            "bottom_right": list(bottom_right),
+            "player_color": player_color
+        }
+        self.save()
+
     @property
     def board_region(self) -> Optional[tuple[int, int, int, int]]:
         """Return (x, y, w, h) or None if uncalibrated."""
@@ -125,15 +161,20 @@ class Config:
                 data: dict = json.load(fh)
             for key, value in data.items():
                 if hasattr(cfg, key):
-                    # Convert lists back to tuples for coordinate fields
-                    if key in ("board_top_left", "board_bottom_right") and value is not None:
-                        value = tuple(value)
                     setattr(cfg, key, value)
-        # Also try to load calibration data
-        if CALIBRATION_FILE.exists() and cfg.board_top_left is None:
-            with open(CALIBRATION_FILE, "r", encoding="utf-8") as fh:
-                cal = json.load(fh)
-            cfg.board_top_left = tuple(cal["top_left"])
-            cfg.board_bottom_right = tuple(cal["bottom_right"])
-            cfg.player_color = cal.get("player_color", cfg.player_color)
+        
+        # Load legacy calibration.json if it exists and site_configs is empty
+        if CALIBRATION_FILE.exists():
+            try:
+                with open(CALIBRATION_FILE, "r", encoding="utf-8") as fh:
+                    cal = json.load(fh)
+                # Default legacy calibration to chess.com
+                if not cfg.site_configs["chess.com"]["top_left"]:
+                    cfg.site_configs["chess.com"] = {
+                        "top_left": cal["top_left"],
+                        "bottom_right": cal["bottom_right"],
+                        "player_color": cal.get("player_color", "white")
+                    }
+            except Exception:
+                pass
         return cfg

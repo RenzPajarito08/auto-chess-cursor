@@ -101,13 +101,26 @@ class ChessBot:
     # ------------------------------------------------------------------ #
     # Validation
     # ------------------------------------------------------------------ #
-    def _validate_config(self) -> None:
-        if self.cfg.board_top_left is None or self.cfg.board_bottom_right is None:
-            print(
-                "\n❌  No calibration found.\n"
-                "    Run  python calibrate.py  first to set up the board region.\n"
-            )
-            sys.exit(1)
+    def _validate_config(self, site: Optional[str] = None) -> None:
+        """Ensure the bot has calibration/templates for the active site."""
+        # If site is provided, we check that specific site's calibration
+        if site:
+            if not self.cfg.apply_site_config(site):
+                print(
+                    f"\n❌  No calibration found for {site}.\n"
+                    f"    Run  python calibrate.py  and select {site} to set it up.\n"
+                )
+                sys.exit(1)
+        else:
+            # Initial check: just make sure we have AT LEAST ONE site calibrated
+            # or the legacy calibration loaded.
+            has_any = any(v.get("top_left") for v in self.cfg.site_configs.values())
+            if not has_any and self.cfg.board_top_left is None:
+                print(
+                    "\n❌  No calibration found.\n"
+                    "    Run  python calibrate.py  first to set up a chess site.\n"
+                )
+                sys.exit(1)
 
         if not Path(self.cfg.stockfish_path).exists():
             print(
@@ -117,12 +130,16 @@ class ChessBot:
             )
             sys.exit(1)
 
-        if not TEMPLATES_DIR.exists() or not any(TEMPLATES_DIR.glob("*.png")):
-            print(
-                "\n❌  No piece templates found.\n"
-                "    Run  python calibrate.py  with the board in starting position.\n"
-            )
-            sys.exit(1)
+        # Templates check is site-dependent, we'll check it more thoroughly after connection
+        templates_dir = self.cfg.get_templates_dir(site)
+        if not templates_dir.exists() or not any(templates_dir.glob("*.png")):
+            # Only warn if not using DOM reader (which doesn't need templates)
+            if not self.cfg.use_dom_reader:
+                print(
+                    f"\n❌  No piece templates found for {site or 'current site'}.\n"
+                    "    Run  python calibrate.py  to extract templates.\n"
+                )
+                sys.exit(1)
 
     # ------------------------------------------------------------------ #
     # Hotkeys
@@ -189,11 +206,21 @@ class ChessBot:
             )
             return
 
-        # Synchronize detected site
-        self.cfg.detected_site = self.game_reader.site
-        self.mouse.site = self.game_reader.site
-        self.log.info("Site detected: %s", self.cfg.detected_site)
-        print(f"✅  Connected to {self.cfg.detected_site}")
+        # Synchronize detected site and load corresponding calibration
+        site = self.game_reader.site
+        self.cfg.detected_site = site
+        self.mouse.site = site
+        self.log.info("Site detected: %s", site)
+        print(f"✅  Connected to {site}")
+
+        # Load site-specific calibration
+        if self.cfg.apply_site_config(site):
+            self.log.info("Loaded calibration profile for %s", site)
+            # Update subsystems with new coordinates
+            self.mouse.mapper.update_corners(self.cfg.board_top_left, self.cfg.board_bottom_right)
+            self.mouse.mapper.player_color = self.cfg.player_color
+        else:
+            self._validate_config(site) # This will exit if no calibration found for this site
 
         # Auto-detect player color and update mapper
         self._detect_and_set_color()
@@ -276,16 +303,24 @@ class ChessBot:
             self._last_total_moves = -1 # Reset so we act on the first move correctly
 
         # 2. Check if it's our turn
+        # Safety: if move count is 0 and we aren't sure of our color yet, wait.
+        if total_moves == 0 and self.cfg.player_color is None:
+            self.log.warning("Moves at 0 but color unknown - waiting for detection")
+            return
+
         our_color = "w" if self.cfg.player_color == "white" else "b"
         
         # If it's not our turn, we skip.
         if active_color != our_color:
             # But we update the move counter so we know when the opponent HAS moved later.
             if total_moves > self._last_total_moves:
-                self.log.info(
-                    "Opponent move detected (Total: %d). Waiting for %s...",
-                    total_moves, "black" if our_color == "w" else "white"
-                )
+                if total_moves == 0:
+                    self.log.info("Starting as Black - waiting for opponent's first move")
+                else:
+                    self.log.info(
+                        "Opponent move detected (Total: %d). Waiting for %s...",
+                        total_moves, "black" if our_color == "w" else "white"
+                    )
                 self._last_total_moves = total_moves
                 self.last_fen = fen
             return

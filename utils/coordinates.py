@@ -35,18 +35,20 @@ class SquareMapper:
 
     def __init__(
         self,
-        top_left: Tuple[int, int],
-        bottom_right: Tuple[int, int],
+        top_left: Optional[Tuple[int, int]],
+        bottom_right: Optional[Tuple[int, int]],
         player_color: str = "white",
     ) -> None:
         self.top_left = top_left
         self.bottom_right = bottom_right
         self.player_color = player_color.lower()
+        self.board_width = 0
+        self.board_height = 0
+        self.square_w = 0.0
+        self.square_h = 0.0
 
-        self.board_width = bottom_right[0] - top_left[0]
-        self.board_height = bottom_right[1] - top_left[1]
-        self.square_w = self.board_width / 8
-        self.square_h = self.board_height / 8
+        if top_left and bottom_right:
+            self._update_dimensions()
 
         log.debug(
             "SquareMapper initialised — board %s→%s  sq=%.1f×%.1f  color=%s",
@@ -56,6 +58,21 @@ class SquareMapper:
             self.square_h,
             self.player_color,
         )
+
+    def _update_dimensions(self) -> None:
+        """Update square dimensions from corners."""
+        if self.top_left and self.bottom_right:
+            self.board_width = self.bottom_right[0] - self.top_left[0]
+            self.board_height = self.bottom_right[1] - self.top_left[1]
+            self.square_w = self.board_width / 8
+            self.square_h = self.board_height / 8
+
+    def update_corners(self, top_left: Tuple[int, int], bottom_right: Tuple[int, int]) -> None:
+        """Update the board corners at runtime."""
+        self.top_left = top_left
+        self.bottom_right = bottom_right
+        self._update_dimensions()
+        log.info("SquareMapper updated: %s -> %s", top_left, bottom_right)
 
     # ------------------------------------------------------------------ #
     # Public API

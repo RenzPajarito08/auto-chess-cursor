@@ -26,6 +26,8 @@ import cv2
 import mss
 import numpy as np
 
+from config import Config
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -147,6 +149,20 @@ def pick_corners(screen: np.ndarray) -> Tuple[Tuple[int, int], Tuple[int, int]]:
     return tl, br
 
 
+def ask_site() -> str:
+    """Ask the user which site they are calibrating for."""
+    while True:
+        print("\nWhich site are you calibrating for?")
+        print("1. Chess.com")
+        print("2. Lichess.org")
+        choice = input("Choice (1/2): ").strip()
+        if choice == "1":
+            return "chess.com"
+        if choice == "2":
+            return "lichess.org"
+        print("Please enter 1 or 2.")
+
+
 def ask_player_color() -> str:
     """Ask the user which colour is at the bottom of the board."""
     while True:
@@ -163,6 +179,7 @@ def extract_templates(
     top_left: Tuple[int, int],
     bottom_right: Tuple[int, int],
     player_color: str,
+    site: str,
 ) -> None:
     """
     Crop each square from the starting position and save piece templates
@@ -172,7 +189,9 @@ def extract_templates(
     (e.g. ``wP_light.png`` and ``wP_dark.png``) so that template matching
     works regardless of the square colour the piece sits on.
     """
-    TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+    cfg = Config.load()
+    templates_dir = cfg.get_templates_dir(site)
+    templates_dir.mkdir(parents=True, exist_ok=True)
 
     x1, y1 = top_left
     x2, y2 = bottom_right
@@ -206,7 +225,7 @@ def extract_templates(
             cx2 = cx1 + sq_w
             square_img = board_img[cy1:cy2, cx1:cx2]
 
-            out_path = TEMPLATES_DIR / f"{key}.png"
+            out_path = templates_dir / f"{key}.png"
             cv2.imwrite(str(out_path), square_img)
             saved.add(key)
             total += 1
@@ -226,28 +245,25 @@ def extract_templates(
             cx2 = cx1 + sq_w
             square_img = board_img[cy1:cy2, cx1:cx2]
 
-            out_path = TEMPLATES_DIR / f"{key}.png"
+            out_path = templates_dir / f"{key}.png"
             cv2.imwrite(str(out_path), square_img)
             saved.add(key)
             total += 1
             print(f"  Saved template: {key}  →  {out_path}")
 
-    print(f"\n✓ {total} templates saved to {TEMPLATES_DIR}")
+    print(f"\n✓ {total} templates saved to {templates_dir}")
 
 
 def save_calibration(
     top_left: Tuple[int, int],
     bottom_right: Tuple[int, int],
     player_color: str,
+    site: str,
 ) -> None:
-    """Write calibration data to JSON."""
-    data = {
-        "top_left": list(top_left),
-        "bottom_right": list(bottom_right),
-        "player_color": player_color,
-    }
-    CALIBRATION_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    print(f"\n✓ Calibration saved to {CALIBRATION_FILE}")
+    """Update site-specific calibration in Config."""
+    cfg = Config.load()
+    cfg.update_site_config(site, top_left, bottom_right, player_color)
+    print(f"\n✓ Calibration saved for {site}")
 
 
 # ---------------------------------------------------------------------------
@@ -268,14 +284,17 @@ def main() -> None:
     height = bottom_right[1] - top_left[1]
     print(f"Board size: {width} × {height} px  |  Square: {width // 8} × {height // 8} px")
 
+    site = ask_site()
+    print(f"Calibrating for: {site}")
+
     player_color = ask_player_color()
     print(f"Player colour: {player_color}")
 
-    save_calibration(top_left, bottom_right, player_color)
+    save_calibration(top_left, bottom_right, player_color, site)
 
     print("\nExtracting piece templates from starting position...")
     print("(Make sure the board shows the STARTING POSITION!)\n")
-    extract_templates(screen, top_left, bottom_right, player_color)
+    extract_templates(screen, top_left, bottom_right, player_color, site)
 
     print("\n" + "=" * 45)
     print("  Calibration complete!  You can now run:")

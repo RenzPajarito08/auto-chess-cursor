@@ -221,6 +221,12 @@ class GameStateReader:
                     }
                     return JSON.stringify(moves);
                 }
+                
+                // Fallback: If no plys but the board is visible, it's a new game (0 moves)
+                if (document.querySelector('cg-board, .cg-wrap, .main-board')) {
+                    return JSON.stringify([]);
+                }
+                
                 return null;
             })()
             """
@@ -383,7 +389,15 @@ class GameStateReader:
         else: # lichess.org
             js = r"""
             (() => {
-                // 1. Primary check: orientation class on wrap or board
+                // 1. Primary check: status message (very reliable at start)
+                const statusMsg = document.querySelector('.message, .announcement, .notification');
+                if (statusMsg) {
+                    const text = statusMsg.textContent.toLowerCase();
+                    if (text.includes('you play the white')) return 'white';
+                    if (text.includes('you play the black')) return 'black';
+                }
+
+                // 2. orientation class on wrap or board
                 // Lichess uses 'orientation-black' or 'orientation-white'
                 const orientationElem = document.querySelector('.orientation-black, .orientation-white, .cg-wrap, .cg-board, cg-container');
                 if (orientationElem) {
@@ -397,14 +411,14 @@ class GameStateReader:
                     }
                 }
 
-                // 2. Secondary check: coordinates
+                // 3. coordinates
                 const blackCoords = document.querySelector('coords.black, .coords.black');
                 if (blackCoords) return 'black';
                 
                 const whiteCoords = document.querySelector('coords.white, .coords.white');
                 if (whiteCoords) return 'white';
 
-                // 3. Fallback: player status labels
+                // 4. Fallback: player status labels
                 const blackBottom = document.querySelector('.player.black.bottom, .ruser-bottom.black, .player-bottom.black');
                 if (blackBottom) return 'black';
 

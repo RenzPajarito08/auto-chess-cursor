@@ -66,6 +66,7 @@ class Config:
     pause_hotkey: str = "ctrl+m"
     quit_hotkey: str = "ctrl+q"
     bullet_hotkey: str = "ctrl+b"
+    auto_next_hotkey: str = "ctrl+y"
 
     # -- Logging ----------------------------------------------------------
     log_level: str = "INFO"

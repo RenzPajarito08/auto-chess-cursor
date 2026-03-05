@@ -45,6 +45,7 @@ class ChessBot:
         self.cfg = config
         self.paused = False
         self.running = True
+        self.auto_next_game = False
         self.last_fen: str = ""
         self.move_count: int = 0
         self.consecutive_errors: int = 0
@@ -147,18 +148,19 @@ class ChessBot:
         keyboard.add_hotkey(self.cfg.pause_hotkey, self._toggle_pause)
         keyboard.add_hotkey(self.cfg.quit_hotkey, self._quit)
         keyboard.add_hotkey(self.cfg.bullet_hotkey, self._toggle_bullet_mode)
+        keyboard.add_hotkey(self.cfg.auto_next_hotkey, self._toggle_auto_next_game)
         self.log.info(
-            "Hotkeys registered — Pause: %s  |  Quit: %s  |  Bullet Mode: %s",
+            "Hotkeys registered — Pause: %s  |  Quit: %s  |  Bullet Mode: %s  |  Auto Next: %s",
             self.cfg.pause_hotkey,
             self.cfg.quit_hotkey,
             self.cfg.bullet_hotkey,
+            self.cfg.auto_next_hotkey,
         )
 
     def _toggle_pause(self) -> None:
         self.paused = not self.paused
         state = "PAUSED" if self.paused else "RESUMED"
         self.log.info("⏸  Bot %s", state)
-        print(f"\n{'⏸ ' if self.paused else '▶ '} Bot {state}")
 
     def _quit(self) -> None:
         self.log.info("🛑  Quit hotkey pressed")
@@ -170,6 +172,12 @@ class ChessBot:
         state = "ENABLED" if self.mouse.human.bullet_mode else "DISABLED"
         icon = "🚀" if self.mouse.human.bullet_mode else "⚖️"
         self.log.info("%s  Bullet Mode %s", icon, state)
+
+    def _toggle_auto_next_game(self) -> None:
+        """Toggle automatic next game."""
+        self.auto_next_game = not self.auto_next_game
+        state = "ENABLED" if self.auto_next_game else "DISABLED"
+        self.log.info("🔄 Auto Next Game %s", state)
 
     # ------------------------------------------------------------------ #
     # Main loop
@@ -208,7 +216,6 @@ class ChessBot:
         self.cfg.detected_site = site
         self.mouse.site = site
         self.log.info("Site detected: %s", site)
-        print(f"✅  Connected to {site}")
 
         # Load site-specific calibration
         if self.cfg.apply_site_config(site):
@@ -264,6 +271,12 @@ class ChessBot:
 
                 # Move check interval is shorter in bullet mode
                 interval = 0.05 if self.mouse.human.bullet_mode else self.cfg.move_check_interval
+                
+                if self.auto_next_game:
+                    if self.game_reader.click_next_arena_game():
+                        self.log.info("Clicked Next Arena Game...")
+                        time.sleep(2) # Give it a moment to find the next game
+                
                 time.sleep(interval)
 
         finally:
@@ -422,6 +435,7 @@ class ChessBot:
         print("║   Ctrl+M = Pause/Resume                       ║")
         print("║   Ctrl+Q = Quit                               ║")
         print("║   Ctrl+B = Bullet Mode (1m games)             ║")
+        print("║   Ctrl+Y = Auto Next Game                     ║")
         print("╚═══════════════════════════════════════════════╝")
         print()
 

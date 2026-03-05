@@ -468,6 +468,30 @@ class GameStateReader:
         return result
 
     # ------------------------------------------------------------------ #
+    # Auto Next Game
+    # ------------------------------------------------------------------ #
+    def click_next_arena_game(self) -> bool:
+        """
+        Attempt to click the "Next Arena Game" button when the game ends.
+        Returns True if the button was found and clicked, False otherwise.
+        """
+        if self.site == "chess.com":
+            js = r"""
+            (() => {
+                const button = document.querySelector('[data-cy="next-arena-game-button"]');
+                if (button && button.style.display !== 'none') {
+                    button.click();
+                    return true;
+                }
+                return false;
+            })()
+            """
+            result = self._evaluate_js(js)
+            return bool(result)
+        return False
+
+
+    # ------------------------------------------------------------------ #
     # Context Manager
     # ------------------------------------------------------------------ #
     def __enter__(self) -> "GameStateReader":

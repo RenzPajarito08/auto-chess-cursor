@@ -15,6 +15,7 @@ Usage:
 
 from __future__ import annotations
 
+import random
 import sys
 import threading
 import time
@@ -49,7 +50,10 @@ class ChessBot:
         self.last_fen: str = ""
         self.move_count: int = 0
         self.consecutive_errors: int = 0
-        self._last_total_moves: int = 0  # Total moves seen in the DOM
+        self._last_total_moves: int = -1  # Total moves seen in the DOM (-1 = not yet started)
+        self._game_over_detected_at: float = 0.0  # Timestamp when game-over button first seen
+        self._game_over_delay: float = 0.0  # Random delay before clicking next game
+        self._pending_color_detection: bool = False  # True when we need to re-detect color for a new game
 
         # --- Build subsystems ---
         self._validate_config()
@@ -195,6 +199,29 @@ class ChessBot:
         else:
             self.log.warning("Could not detect color, using current: %s", self.cfg.player_color)
 
+    def _handle_new_game(self) -> None:
+        """Handle transition to a new game: reset state and flag color re-detection.
+
+        Color detection is NOT done here because the DOM may still be showing
+        the old game's board.  Instead we set a flag so that _tick() detects
+        color once the new game's board is actually live.
+        """
+        self.log.info("New game transition (old_color=%s)", self.cfg.player_color)
+
+        # Reset internal game state reader (board, move history)
+        self.game_reader.reset_game_state()
+
+        # Reset tracking so the first move of the new game is not skipped
+        self._last_total_moves = -1
+        self.last_fen = ""
+
+        # Reset bullet mode counters for variety
+        self.mouse.human.long_thought_count = 0
+        self.mouse.human.max_long_thoughts = random.randint(6, 10)
+
+        # Flag: detect color on the next tick that sees a fresh game board
+        self._pending_color_detection = True
+
     # ------------------------------------------------------------------ #
     def run(self) -> None:
         """Start the bot main loop."""
@@ -273,9 +300,25 @@ class ChessBot:
                 interval = 0.05 if self.mouse.human.bullet_mode else self.cfg.move_check_interval
                 
                 if self.auto_next_game:
-                    if self.game_reader.click_next_arena_game():
-                        self.log.info("Clicked Next Arena Game...")
-                        time.sleep(2) # Give it a moment to find the next game
+                    if self.game_reader.is_next_arena_button_visible():
+                        now = time.time()
+                        if self._game_over_detected_at == 0.0:
+                            # First time seeing the button — start the delay timer
+                            self._game_over_delay = random.uniform(1.0, 2.0)
+                            self._game_over_detected_at = now
+                            self.log.info(
+                                "Game over detected. Waiting %.1fs before clicking next...",
+                                self._game_over_delay,
+                            )
+                        elif now - self._game_over_detected_at >= self._game_over_delay:
+                            # Delay elapsed — click the button
+                            if self.game_reader.click_next_arena_game():
+                                self.log.info("Clicked Next Arena Game — handling transition...")
+                                self._game_over_detected_at = 0.0
+                                self._handle_new_game()
+                    else:
+                        # Button not visible — reset tracker
+                        self._game_over_detected_at = 0.0
                 
                 time.sleep(interval)
 
@@ -298,16 +341,36 @@ class ChessBot:
             return
 
         fen, total_moves, active_color = state
-        
-        # 1.1 Check for game reset (new game started or page refreshed)
-        # If the move count drops significantly or is 0 while we had a high count, it's a new game.
-        if total_moves < self._last_total_moves:
-            self.log.info("New game detected (Moves: %d -> %d). Re-detecting color...", self._last_total_moves, total_moves)
+
+        # 0. Deferred color detection for new game.
+        #    We detect color HERE (on the live board) instead of during
+        #    the game transition, because the old board may still be showing
+        #    when _handle_new_game() runs.
+        if self._pending_color_detection and total_moves <= 1:
+            self.log.info(
+                "New game board is live (%d moves). Detecting color now...",
+                total_moves,
+            )
             self._detect_and_set_color()
-            self._last_total_moves = -1 # Reset so we act on the first move correctly
-            # Reset bullet mode counters
-            self.mouse.human.long_thought_count = 0
-            self.mouse.human.max_long_thoughts = random.randint(6, 10) # Re-roll for variety
+            self._pending_color_detection = False
+            # Reset game state reader to match the fresh detection
+            self.game_reader.reset_game_state()
+            self._last_total_moves = -1
+            return  # Re-enter on next tick with clean state
+
+        # 1.1 Check for game reset (new game started or page refreshed)
+        # Only trigger on SIGNIFICANT drops — a fresh game has 0-2 moves.
+        # Small fluctuations (e.g. 90→89) are DOM virtualization, NOT a new game.
+        if (
+            total_moves <= 2
+            and self._last_total_moves > 5
+        ):
+            self.log.info(
+                "New game detected in tick (Moves: %d -> %d). Handling transition...",
+                self._last_total_moves, total_moves,
+            )
+            self._handle_new_game()
+            return  # Let the next tick pick up the new game cleanly
 
         # 2. Check if it's our turn
         # Safety: if move count is 0 and we aren't sure of our color yet, wait.
@@ -338,20 +401,11 @@ class ChessBot:
             return
 
         self.log.info(
-            "Game state update (Our Turn: %s)! Total moves: %s — FEN: %s",
-            active_color, total_moves, fen,
+            "Our turn (%s)! Total moves: %d — FEN: %s",
+            our_color, total_moves, fen,
         )
         self._last_total_moves = total_moves
         self.last_fen = fen
-
-        # 3. Check if it's our turn
-        our_color = "w" if self.cfg.player_color == "white" else "b"
-        if active_color != our_color:
-            self.log.info(
-                "It's %s's turn (opponent). Waiting...",
-                "black" if our_color == "w" else "white",
-            )
-            return
 
         # 4. It's our turn! Get best move from Stockfish
         self.log.info("It's our turn (%s). Querying engine...", our_color)

@@ -468,8 +468,31 @@ class GameStateReader:
         return result
 
     # ------------------------------------------------------------------ #
+    # Game Reset
+    # ------------------------------------------------------------------ #
+    def reset_game_state(self) -> None:
+        """Reset internal board and move tracking for a new game."""
+        self._board = chess.Board()
+        self._last_move_count = 0
+        self._full_move_history = []
+        log.info("GameStateReader internal state reset for new game")
+
+    # ------------------------------------------------------------------ #
     # Auto Next Game
     # ------------------------------------------------------------------ #
+    def is_next_arena_button_visible(self) -> bool:
+        """Check if the 'Next Arena Game' button is visible (without clicking)."""
+        if self.site == "chess.com":
+            js = r"""
+            (() => {
+                const button = document.querySelector('[data-cy="next-arena-game-button"]');
+                return !!(button && button.style.display !== 'none');
+            })()
+            """
+            result = self._evaluate_js(js)
+            return bool(result)
+        return False
+
     def click_next_arena_game(self) -> bool:
         """
         Attempt to click the "Next Arena Game" button when the game ends.

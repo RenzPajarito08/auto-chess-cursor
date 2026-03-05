@@ -57,7 +57,7 @@ class MouseController:
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
-    def execute_move(self, uci_move: str) -> None:
+    def execute_move(self, uci_move: str, move_count: int = 0, is_premove: bool = False) -> None:
         """
         Execute a chess move given in UCI notation (e.g. ``'e2e4'``).
 
@@ -84,7 +84,7 @@ class MouseController:
         to_pos = self.human.jitter(*to_pos)
 
         log.info(
-            "Executing move %s → %s  screen (%d,%d)→(%d,%d)%s",
+            "Executing move %s → %s  screen (%d,%d)→(%d,%d)%s" + (" (PREMOVE)" if is_premove else ""),
             from_sq,
             to_sq,
             from_pos[0],
@@ -95,16 +95,18 @@ class MouseController:
         )
 
         # Step 1: Think
-        self.human.think_delay()
+        if not is_premove:
+            self.human.think_delay(move_count)
 
         if self.use_drag:
-            self._drag_move(from_pos, to_pos)
+            self._drag_move(from_pos, to_pos, is_premove=is_premove)
         else:
-            self._click_click_move(from_pos, to_pos)
+            self._click_click_move(from_pos, to_pos, is_premove=is_premove)
 
         # Handle promotion if needed
         if promotion:
-            time.sleep(0.3)
+            if not is_premove:
+                time.sleep(0.3)
             self._handle_promotion(promotion, to_pos)
 
         log.info("Move %s executed", uci_move)
@@ -113,58 +115,60 @@ class MouseController:
     # Move implementations
     # ------------------------------------------------------------------ #
     def _drag_move(
-        self, from_pos: Tuple[int, int], to_pos: Tuple[int, int]
+        self, from_pos: Tuple[int, int], to_pos: Tuple[int, int], is_premove: bool = False
     ) -> None:
         """Perform a drag-and-drop move."""
         # Move to source via Bézier curve
         current = pyautogui.position()
-        self._smooth_move(current, from_pos)
+        self._smooth_move(current, from_pos, is_premove=is_premove)
         
-        if not self.human.bullet_mode:
+        if not self.human.bullet_mode and not is_premove:
             time.sleep(0.05)
 
         # Pick up
         pyautogui.mouseDown(button="left")
         
-        if not self.human.bullet_mode:
+        if not (self.human.bullet_mode or is_premove):
             time.sleep(random_small())
 
         # Optional hesitation
-        self.human.maybe_hesitate()
+        if not is_premove:
+            self.human.maybe_hesitate()
 
         # Drag to destination via Bézier curve
-        self._smooth_move(from_pos, to_pos)
+        self._smooth_move(from_pos, to_pos, is_premove=is_premove)
         
-        if not self.human.bullet_mode:
+        if not (self.human.bullet_mode or is_premove):
             time.sleep(random_small())
 
         # Release
         pyautogui.mouseUp(button="left")
 
     def _click_click_move(
-        self, from_pos: Tuple[int, int], to_pos: Tuple[int, int]
+        self, from_pos: Tuple[int, int], to_pos: Tuple[int, int], is_premove: bool = False
     ) -> None:
         """Perform a click-source then click-destination move."""
         current = pyautogui.position()
 
         # Click source
-        self._smooth_move(current, from_pos)
-        if not self.human.bullet_mode:
+        self._smooth_move(current, from_pos, is_premove=is_premove)
+        if not (self.human.bullet_mode or is_premove):
             time.sleep(0.05)
         pyautogui.click(from_pos[0], from_pos[1])
 
         # Brief pause between clicks
-        if not self.human.bullet_mode:
+        if not (self.human.bullet_mode or is_premove):
             time.sleep(0.1 + random_small())
-        else:
+        elif not is_premove:
             time.sleep(0.02)
 
         # Optional hesitation
-        self.human.maybe_hesitate()
+        if not is_premove:
+            self.human.maybe_hesitate()
 
         # Click destination
-        self._smooth_move(from_pos, to_pos)
-        if not self.human.bullet_mode:
+        self._smooth_move(from_pos, to_pos, is_premove=is_premove)
+        if not (self.human.bullet_mode or is_premove):
             time.sleep(0.05)
         pyautogui.click(to_pos[0], to_pos[1])
 
@@ -172,28 +176,31 @@ class MouseController:
     # Smooth mouse movement along Bézier curve
     # ------------------------------------------------------------------ #
     def _smooth_move(
-        self, start: Tuple[int, int], end: Tuple[int, int]
+        self, start: Tuple[int, int], end: Tuple[int, int], is_premove: bool = False
     ) -> None:
         """
         Move the mouse cursor from ``start`` to ``end`` along a smooth
         Bézier curve, with realistic speed variation.
         """
-        path = self.human.bezier_path(start, end, num_points=25)
-        total_duration = self.human.move_duration()
+        # Bullet/Premove: fewer points, much faster
+        points_count = 10 if (self.human.bullet_mode or is_premove) else 25
+        path = self.human.bezier_path(start, end, num_points=points_count)
+        
+        duration = self.human.move_duration()
+        if is_premove:
+            duration *= 0.5 # Premoves are lightning fast
 
-        # Speed profile: slow start → fast middle → slow end (ease-in-out)
+        # Speed profile
         for i, (x, y) in enumerate(path):
             t = i / max(len(path) - 1, 1)
-            # Ease-in-out timing function (smoothstep)
             smoothed = t * t * (3.0 - 2.0 * t)
-            delay = total_duration / len(path)
+            delay = duration / len(path)
 
-            # Vary delay: slower at start and end
             speed_factor = 0.5 + 1.5 * (1.0 - abs(2.0 * smoothed - 1.0))
             adjusted_delay = delay * speed_factor
 
             pyautogui.moveTo(x, y, _pause=False)
-            time.sleep(max(0.001, adjusted_delay))
+            time.sleep(max(0.0005, adjusted_delay))
 
     # ------------------------------------------------------------------ #
     # Promotion handling

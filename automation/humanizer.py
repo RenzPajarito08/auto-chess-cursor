@@ -65,11 +65,16 @@ class Humanizer:
         self.hesitation_max = hesitation_max
         self.bezier_variance = bezier_variance
         self.bullet_mode = False
+        
+        # Bullet mode optimizations
+        self.long_thought_count = 0
+        self.max_long_thoughts = random.randint(6, 10)
+        self.last_game_id = None  # To reset counts between games if needed
 
     # ------------------------------------------------------------------ #
     # Timing
     # ------------------------------------------------------------------ #
-    def think_delay(self) -> float:
+    def think_delay(self, move_count: int = 0) -> float:
         """
         Return a random 'thinking' delay and sleep for that duration.
 
@@ -77,13 +82,25 @@ class Humanizer:
         ``[think_delay_min, think_delay_max]``.
         """
         if self.bullet_mode:
-            # Bullet mode: 50ms to 150ms delay
-            delay = random.uniform(0.05, 0.15)
+            # Bullet mode timing
+            # If it's early (opening), play fast but not too fast
+            if move_count <= 10:
+                delay = random.uniform(0.1, 0.4)
+            else:
+                # Mid/End game logic:
+                # 85% chance of a very fast move (0.05s - 0.2s)
+                # 15% chance of a "longer" thought (1.0s - 3.5s) if we have credits left
+                if self.long_thought_count < self.max_long_thoughts and random.random() < 0.15:
+                    delay = random.uniform(1.0, 3.5)
+                    self.long_thought_count += 1
+                else:
+                    delay = random.uniform(0.05, 0.2)
         else:
             delay = random.gauss(self.think_delay_mean, self.think_delay_std)
             delay = max(self.think_delay_min, min(self.think_delay_max, delay))
             
-        log.debug("Thinking for %.2fs", delay)
+        log.debug("Thinking for %.2fs (Bullet: %s, Move: %d, Long pauses: %d/%d)", 
+                  delay, self.bullet_mode, move_count, self.long_thought_count, self.max_long_thoughts)
         time.sleep(delay)
         return delay
 

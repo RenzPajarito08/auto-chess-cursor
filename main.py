@@ -301,6 +301,9 @@ class ChessBot:
             self.log.info("New game detected (Moves: %d -> %d). Re-detecting color...", self._last_total_moves, total_moves)
             self._detect_and_set_color()
             self._last_total_moves = -1 # Reset so we act on the first move correctly
+            # Reset bullet mode counters
+            self.mouse.human.long_thought_count = 0
+            self.mouse.human.max_long_thoughts = random.randint(6, 10) # Re-roll for variety
 
         # 2. Check if it's our turn
         # Safety: if move count is 0 and we aren't sure of our color yet, wait.
@@ -355,15 +358,24 @@ class ChessBot:
 
         # 5. Execute the move
         self.log.info("Playing: %s (FEN: %s)", best_move, fen)
-        self.mouse.execute_move(best_move)
+        self.mouse.execute_move(best_move, move_count=self.move_count)
+
+        is_premove_executed = False
+        if self.mouse.human.bullet_mode:
+            premove = self._get_safe_premove(fen, best_move)
+            if premove:
+                self.log.info("Premoving recapture: %s", premove)
+                self.mouse.execute_move(premove, is_premove=True)
+                is_premove_executed = True
 
         # 6. Update state
         self.move_count += 1
         self.log.info("Move #%d complete (%s)", self.move_count, best_move)
 
         # Give the DOM a moment to update with our move
-        delay = 0.1 if self.mouse.human.bullet_mode else 0.5
-        time.sleep(delay)
+        if not is_premove_executed:
+            delay = 0.1 if self.mouse.human.bullet_mode else 0.5
+            time.sleep(delay)
 
         # Re-read game state to sync our tracking
         updated_state = self.game_reader.get_game_state()
@@ -375,6 +387,38 @@ class ChessBot:
         """Check if the active color matches our player color."""
         our = "w" if self.cfg.player_color == "white" else "b"
         return active_color == our
+
+    def _get_safe_premove(self, fen: str, our_move: str) -> Optional[str]:
+        """Determine if we can safely premove a recapture."""
+        import chess
+        try:
+            board = chess.Board(fen)
+            try:
+                move_obj = chess.Move.from_uci(our_move)
+                if move_obj not in board.legal_moves:
+                    move_obj = board.parse_san(our_move) 
+            except ValueError:
+                return None
+                
+            board.push(move_obj)
+            to_sq = move_obj.to_square
+            
+            # Find an opponent move that captures on to_sq
+            for opp_move in list(board.legal_moves):
+                if opp_move.to_square == to_sq:
+                    board.push(opp_move)
+                    # Use a very short time limit for premove calculation (30ms)
+                    our_response = self.engine.get_best_move(board.fen(), depth=5, time_limit=0.03)
+                    board.pop()
+                    
+                    if our_response:
+                        response_obj = chess.Move.from_uci(our_response)
+                        if response_obj.to_square == to_sq:
+                            return our_response
+            return None
+        except Exception as exc:
+            self.log.error("Error calculating premove: %s", exc)
+            return None
 
     # ------------------------------------------------------------------ #
     # UI

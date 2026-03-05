@@ -44,6 +44,7 @@ class GameStateReader:
         self._board = chess.Board()  # Tracks the true game state
         self._our_move_count = 0  # How many moves WE have played
         self.site = "chess.com"  # Default site
+        self._full_move_history: List[str] = []  # Maintain full game history across DOM virtualization
 
     # ------------------------------------------------------------------ #
     # Connection
@@ -273,15 +274,45 @@ class GameStateReader:
     # ------------------------------------------------------------------ #
     # FEN Reconstruction
     # ------------------------------------------------------------------ #
+    def _merge_move_lists(self, dom_moves: List[str]) -> List[str]:
+        """
+        Merge a partial move list from the DOM into the full history.
+        This handles virtualization where the DOM only contains the latest N moves.
+        """
+        if not hasattr(self, '_full_move_history'):
+            self._full_move_history = []
+            
+        if not dom_moves:
+            self._full_move_history = []
+            return []
+
+        if not self._full_move_history:
+            self._full_move_history = dom_moves.copy()
+            return self._full_move_history
+
+        # Find largest overlap where a suffix of full_list matches a prefix of dom_moves
+        max_overlap = min(len(self._full_move_history), len(dom_moves))
+        for L in range(max_overlap, 0, -1):
+            if self._full_move_history[-L:] == dom_moves[:L]:
+                # Found overlap! Extend history with the new moves
+                self._full_move_history.extend(dom_moves[L:])
+                return self._full_move_history
+
+        # No overlap at all -> likely a new game or we got completely desynced
+        # (e.g. DOM cleared and restarted)
+        self._full_move_history = dom_moves.copy()
+        return self._full_move_history
+
     def get_game_state(self) -> Optional[Tuple[str, int, str]]:
         """
         Read the move list and reconstruct the current FEN.
         Uses a cached board to only process new moves.
         """
-        moves = self.read_move_list()
-        if moves is None:
+        raw_moves = self.read_move_list()
+        if raw_moves is None:
             return None
 
+        moves = self._merge_move_lists(raw_moves)
         total_moves = len(moves)
 
         # Re-initialize or backtrack if the move list shrank or changed
@@ -306,6 +337,7 @@ class GameStateReader:
                     log.error("Sync error at move %d: '%s'. Resetting board.", i + 1, san)
                     self._board = chess.Board()
                     self._last_move_count = 0
+                    self._full_move_history = []  # Clear history to resync from fresh DOM
                     return None
 
         self._last_move_count = total_moves
@@ -352,9 +384,11 @@ class GameStateReader:
         This is the primary polling mechanism: call this in the main loop
         to detect when the opponent has moved.
         """
-        moves = self.read_move_list()
-        if moves is None:
+        raw_moves = self.read_move_list()
+        if raw_moves is None:
             return False
+            
+        moves = self._merge_move_lists(raw_moves)
         current_count = len(moves)
         return current_count > self._last_move_count
 

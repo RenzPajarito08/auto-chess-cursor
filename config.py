@@ -66,7 +66,6 @@ class Config:
     pause_hotkey: str = "ctrl+m"
     quit_hotkey: str = "ctrl+q"
     bullet_hotkey: str = "ctrl+b"
-    emergency_corner_size: int = 5             # px – top-left corner zone
 
     # -- Logging ----------------------------------------------------------
     log_level: str = "INFO"

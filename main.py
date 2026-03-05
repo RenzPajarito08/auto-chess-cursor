@@ -9,10 +9,8 @@ Usage:
     2. Navigate to Chess.com and start a game
     3. Run:  python main.py
 
-Hotkeys (while running):
     Ctrl+M  —  Pause / Resume
     Ctrl+Q  —  Quit
-    Mouse to top-left corner  —  Emergency stop
 """
 
 from __future__ import annotations
@@ -242,12 +240,6 @@ class ChessBot:
 
         try:
             while self.running:
-                # Emergency stop check
-                if MouseController.check_emergency_stop(self.cfg.emergency_corner_size):
-                    self.log.warning("🚨  Emergency stop triggered — mouse in corner")
-                    print("\n🚨  Emergency stop! Mouse moved to top-left corner.")
-                    break
-
                 # Pause check
                 if self.paused:
                     time.sleep(0.2)
@@ -430,7 +422,6 @@ class ChessBot:
         print("║   Ctrl+M = Pause/Resume                       ║")
         print("║   Ctrl+Q = Quit                               ║")
         print("║   Ctrl+B = Bullet Mode (1m games)             ║")
-        print("║   Mouse → top-left corner = Emergency stop    ║")
         print("╚═══════════════════════════════════════════════╝")
         print()
 

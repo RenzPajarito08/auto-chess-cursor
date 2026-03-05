@@ -236,19 +236,6 @@ class MouseController:
             
         pyautogui.click(promo_x, promo_y)
 
-    # ------------------------------------------------------------------ #
-    # Safety
-    # ------------------------------------------------------------------ #
-    @staticmethod
-    def check_emergency_stop(corner_size: int = 5) -> bool:
-        """
-        Return ``True`` if the mouse is in the top-left corner — the
-        user has triggered an emergency stop.
-        """
-        x, y = pyautogui.position()
-        return x <= corner_size and y <= corner_size
-
-
 # -------------------------------------------------------------------------- #
 # Helpers
 # -------------------------------------------------------------------------- #

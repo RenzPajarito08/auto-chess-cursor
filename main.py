@@ -172,7 +172,6 @@ class ChessBot:
         state = "ENABLED" if self.mouse.human.bullet_mode else "DISABLED"
         icon = "🚀" if self.mouse.human.bullet_mode else "⚖️"
         self.log.info("%s  Bullet Mode %s", icon, state)
-        print(f"\n{icon} Bullet Mode {state}")
 
     # ------------------------------------------------------------------ #
     # Main loop

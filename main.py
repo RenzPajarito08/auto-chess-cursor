@@ -217,7 +217,7 @@ class ChessBot:
 
         # Reset bullet mode counters for variety
         self.mouse.human.long_thought_count = 0
-        self.mouse.human.max_long_thoughts = random.randint(6, 10)
+        self.mouse.human.max_long_thoughts = random.randint(6, 7)
 
         # Flag: detect color on the next tick that sees a fresh game board
         self._pending_color_detection = True

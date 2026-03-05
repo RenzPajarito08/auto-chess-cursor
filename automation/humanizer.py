@@ -68,7 +68,7 @@ class Humanizer:
         
         # Bullet mode optimizations
         self.long_thought_count = 0
-        self.max_long_thoughts = random.randint(6, 8)
+        self.max_long_thoughts = random.randint(6, 7)
         self.last_game_id = None  # To reset counts between games if needed
 
     # ------------------------------------------------------------------ #
@@ -89,9 +89,9 @@ class Humanizer:
             else:
                 # Mid/End game logic:
                 # 85% chance of a very fast move (0.05s - 0.2s)
-                # 15% chance of a "longer" thought (1.0s - 3.5s) if we have credits left
+                # 15% chance of a "longer" thought (1.1s - 3.2s) if we have credits left
                 if self.long_thought_count < self.max_long_thoughts and random.random() < 0.15:
-                    delay = random.uniform(1.0, 3.5)
+                    delay = random.uniform(1.1, 3.2)
                     self.long_thought_count += 1
                 else:
                     delay = random.uniform(0.05, 0.2)

@@ -39,11 +39,11 @@ class StockfishEngine:
     def __init__(
         self,
         path: str | Path,
-        depth: int = 12,
+        depth: int = 16,
         time_limit: float = 2.0,
         threads: int = 1,
-        hash_mb: int = 16,
-        skill_level: int = 5,
+        hash_mb: int = 128,
+        skill_level: int = 20,
     ) -> None:
         self.path = Path(path)
         self.depth = depth

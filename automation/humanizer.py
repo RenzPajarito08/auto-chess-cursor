@@ -108,7 +108,7 @@ class Humanizer:
         """Return a random duration for a mouse move (not including pauses)."""
         if self.bullet_mode:
             # Bullet mode: fast movement (0.08s to 0.15s)
-            return random.uniform(0.08, 0.15)
+            return random.uniform(0.1, 0.25)
         return random.uniform(self.move_duration_min, self.move_duration_max)
 
     def maybe_hesitate(self) -> bool:

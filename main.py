@@ -214,10 +214,12 @@ class ChessBot:
         # Reset tracking so the first move of the new game is not skipped
         self._last_total_moves = -1
         self.last_fen = ""
+        self.move_count = 0
+
 
         # Reset bullet mode counters for variety
         self.mouse.human.long_thought_count = 0
-        self.mouse.human.max_long_thoughts = random.randint(6, 7)
+        self.mouse.human.max_long_thoughts = random.randint(6, 10)
 
         # Flag: detect color on the next tick that sees a fresh game board
         self._pending_color_detection = True
@@ -408,7 +410,8 @@ class ChessBot:
 
         # 4. It's our turn! Get best move from Stockfish
         self.log.info("It's our turn (%s). Querying engine...", our_color)
-        best_move = self.engine.get_best_move(fen)
+        t_limit = 0.1 if self.mouse.human.bullet_mode else None
+        best_move = self.engine.get_best_move(fen, time_limit=t_limit)
         if best_move is None:
             self.log.warning("Engine returned no move — game may be over")
             return

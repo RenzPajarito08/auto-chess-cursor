@@ -8,7 +8,7 @@ for obtaining the best move from a given FEN position.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import chess
 import chess.engine
@@ -154,6 +154,58 @@ class StockfishEngine:
         except Exception as exc:
             log.error("Engine error: %s", exc)
             return None
+
+    def get_best_move_with_score(
+        self,
+        fen: str,
+        depth: Optional[int] = None,
+        time_limit: Optional[float] = None,
+    ) -> Tuple[Optional[str], Optional[int]]:
+        """
+        Query Stockfish for the best move in UCI notation (e.g. ``'e2e4'``) and its evaluation.
+        The evaluation is constrained to our perspective in centipawns, or +10000 / -10000 for mate.
+        """
+        if self._engine is None:
+            log.error("Engine not started — call start() first")
+            return None, None
+
+        d = depth or self.depth
+        t = time_limit or self.time_limit
+
+        try:
+            board = chess.Board(fen)
+            if not board.is_valid():
+                log.warning("Invalid FEN: %s", fen)
+        except ValueError as exc:
+            log.error("FEN parse error: %s — %s", fen, exc)
+            return None, None
+
+        try:
+            limit = chess.engine.Limit(depth=d, time=t)
+            # Use info=chess.engine.INFO_SCORE to retrieve engine evaluation
+            result = self._engine.play(board, limit, info=chess.engine.INFO_SCORE)
+            if result.move is None:
+                log.warning("Stockfish returned no move (game over?)")
+                return None, None
+
+            move_uci = result.move.uci()
+            score_cp = None
+            if result.info and "score" in result.info:
+                score = result.info["score"].pov(board.turn)
+                if score.is_mate():
+                    score_cp = 10000 if score.mate() > 0 else -10000
+                else:
+                    score_cp = score.score()
+
+            log.info("Stockfish best move (with score): %s (eval=%s, depth=%d, time=%.1fs)", move_uci, score_cp, d, t)
+            return move_uci, score_cp
+        except chess.engine.EngineTerminatedError:
+            log.error("Stockfish process terminated unexpectedly")
+            self._engine = None
+            return None, None
+        except Exception as exc:
+            log.error("Engine error: %s", exc)
+            return None, None
 
     def get_evaluation(self, fen: str, depth: Optional[int] = None) -> Optional[str]:
         """

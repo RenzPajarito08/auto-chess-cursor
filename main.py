@@ -460,19 +460,40 @@ class ChessBot:
             board.push(move_obj)
             to_sq = move_obj.to_square
             
-            # Find an opponent move that captures on to_sq
-            for opp_move in list(board.legal_moves):
-                if opp_move.to_square == to_sq:
-                    board.push(opp_move)
-                    # Use a very short time limit for premove calculation (30ms)
-                    our_response = self.engine.get_best_move(board.fen(), depth=5, time_limit=0.03)
-                    board.pop()
+            # Find all opponent moves that capture on to_sq
+            recapture_moves = [m for m in board.legal_moves if m.to_square == to_sq]
+            if not recapture_moves:
+                return None
+            
+            common_response = None
+            
+            for opp_move in recapture_moves:
+                board.push(opp_move)
+                # Use a very short time limit for premove calculation (30ms)
+                best_move, score_cp = self.engine.get_best_move_with_score(board.fen(), depth=5, time_limit=0.03)
+                board.pop()
+                
+                if not best_move:
+                    return None
                     
-                    if our_response:
-                        response_obj = chess.Move.from_uci(our_response)
-                        if response_obj.to_square == to_sq:
-                            return our_response
-            return None
+                response_obj = chess.Move.from_uci(best_move)
+                if response_obj.to_square != to_sq:
+                    return None  # Best move does not recapture back on the same square
+                    
+                # Strict evaluation: Avoid blundering pieces
+                # If the score is less than -200 (-2 pawns), it's highly unsafe
+                if score_cp is not None and score_cp < -200:
+                    self.log.info("Premove unsafe due to poor eval: cp %d", score_cp)
+                    return None
+
+                if common_response is None:
+                    common_response = best_move
+                elif best_move != common_response:
+                    # Opponent's different recaptures require different responses from us, unsafe to premove
+                    self.log.info("Premove unsafe: responses differ (%s vs %s)", common_response, best_move)
+                    return None
+                    
+            return common_response
         except Exception as exc:
             self.log.error("Error calculating premove: %s", exc)
             return None

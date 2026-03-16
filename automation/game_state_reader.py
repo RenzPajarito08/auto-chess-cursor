@@ -75,6 +75,10 @@ class GameStateReader:
                     target = page
                     self.site = "lichess.org"
                     break
+                elif "chessclub.com" in url:
+                    target = page
+                    self.site = "chessclub.com"
+                    break
 
             if target is None:
                 log.error(
@@ -164,7 +168,7 @@ class GameStateReader:
     # ------------------------------------------------------------------ #
     def read_move_list(self) -> Optional[List[str]]:
         """
-        Read the move list from Chess.com's DOM.
+        Read the move list from the current chess site's DOM.
 
         Returns a list of SAN moves like ``['d4', 'd5', 'Nc3', 'c6', ...]``
         or ``None`` on failure.
@@ -199,35 +203,64 @@ class GameStateReader:
                 return null;
             })()
             """
+        elif self.site == "chessclub.com":
+            js = r"""
+            (() => {
+                const table = document.querySelector('div.MuiBox-root table') || document.querySelector('table');
+                if (!table) return null;
+                
+                const moves = [];
+                const rows = table.querySelectorAll('tr');
+                const figToChar = {
+                    '♔': 'K', '♕': 'Q', '♖': 'R', '♗': 'B', '♘': 'N', '♙': '',
+                    '♚': 'K', '♛': 'Q', '♜': 'R', '♝': 'B', '♞': 'N', '♟': ''
+                };
+                
+                for (const row of rows) {
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length >= 3 && cells[0].hasAttribute('rowspan')) {
+                        // White move
+                        const whiteCell = cells[1];
+                        const whiteDiv = whiteCell.querySelector('div');
+                        if (whiteDiv) {
+                            let moveText = "";
+                            const fig = whiteDiv.querySelector('span');
+                            if (fig) moveText += figToChar[fig.textContent.trim()] || "";
+                            moveText += whiteDiv.textContent.replace(fig ? fig.textContent : "", "").trim();
+                            if (moveText && moveText !== '-' && moveText !== '...') moves.push(moveText);
+                        }
+                        // Black move
+                        const blackCell = cells[2];
+                        const blackDiv = blackCell ? blackCell.querySelector('div') : null;
+                        if (blackDiv) {
+                            let moveText = "";
+                            const fig = blackDiv.querySelector('span');
+                            if (fig) moveText += figToChar[fig.textContent.trim()] || "";
+                            moveText += blackDiv.textContent.replace(fig ? fig.textContent : "", "").trim();
+                            if (moveText && moveText !== '-' && moveText !== '...') moves.push(moveText);
+                        }
+                    }
+                }
+                return JSON.stringify(moves);
+            })()
+            """
         else: # lichess.org
             js = r"""
             (() => {
-                // Lichess standard move list (handling obfuscated tags like kwdb)
-                const moves = [];
-                // Look for common Lichess move containers and tags
                 const plys = document.querySelectorAll('l_move, .moves move, m2, kwdb, l4x > *');
                 if (plys.length > 0) {
+                    const moves = [];
                     for (const ply of plys) {
-                        // Skip move numbers (often tags like INDEX, i5z, or classes like index)
-                        if (ply.tagName === 'INDEX' || 
-                            ply.tagName === 'I5Z' || 
-                            ply.classList.contains('index') ||
-                            /^\d+\.?$/.test(ply.textContent.trim())) {
+                        if (ply.tagName === 'INDEX' || ply.tagName === 'I5Z' || 
+                            ply.classList.contains('index') || /^\d+\.?$/.test(ply.textContent.trim())) {
                             continue;
                         }
                         const text = ply.textContent.trim();
-                        if (text && text.length <= 10) { // Safety check for SAN length
-                            moves.push(text);
-                        }
+                        if (text && text.length <= 10) moves.push(text);
                     }
                     return JSON.stringify(moves);
                 }
-                
-                // Fallback: If no plys but the board is visible, it's a new game (0 moves)
-                if (document.querySelector('cg-board, .cg-wrap, .main-board')) {
-                    return JSON.stringify([]);
-                }
-                
+                if (document.querySelector('cg-board, .cg-wrap, .main-board')) return JSON.stringify([]);
                 return null;
             })()
             """
@@ -263,10 +296,10 @@ class GameStateReader:
         # Remove common annotations
         move = re.sub(r"[!?]+$", "", move)
         
-        # Keep only standard notation chars
-        move = re.sub(r"[^a-hA-H1-8KQRBNOxX+#=\-]", "", move)
+        # Keep only standard notation chars (including 0 for castling 0-0)
+        move = re.sub(r"[^0-9a-zA-Z+#=\-xX]", "", move)
 
-        if not move:
+        if not move or move == "-":
             return None
 
         return move
@@ -418,6 +451,24 @@ class GameStateReader:
                     }
                 }
                 return null;
+            })()
+            """
+        elif self.site == "chessclub.com":
+            js = r"""
+            (() => {
+                // The most reliable way is checking the first square element's coordinate
+                const firstSquare = document.querySelector('[data-square]');
+                if (firstSquare) {
+                    const coord = firstSquare.getAttribute('data-square');
+                    // Top-left is a8 -> White at bottom
+                    if (coord === 'a8') return 'white';
+                    // Top-left is h1 -> Black at bottom (flipped)
+                    if (coord === 'h1') return 'black';
+                }
+                
+                // Fallback: search for orientation classes
+                const board = document.querySelector('.flipped, .is-flipped, [class*="flipped"]');
+                return board ? 'black' : 'white';
             })()
             """
         else: # lichess.org

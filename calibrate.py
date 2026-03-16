@@ -155,12 +155,15 @@ def ask_site() -> str:
         print("\nWhich site are you calibrating for?")
         print("1. Chess.com")
         print("2. Lichess.org")
-        choice = input("Choice (1/2): ").strip()
+        print("3. Chessclub.com")
+        choice = input("Choice (1/2/3): ").strip()
         if choice == "1":
             return "chess.com"
         if choice == "2":
             return "lichess.org"
-        print("Please enter 1 or 2.")
+        if choice == "3":
+            return "chessclub.com"
+        print("Please enter 1, 2, or 3.")
 
 
 def ask_player_color() -> str:

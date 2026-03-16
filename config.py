@@ -85,7 +85,8 @@ class Config:
     # Maps site name to its calibration data
     site_configs: dict[str, dict] = field(default_factory=lambda: {
         "chess.com": {"top_left": None, "bottom_right": None, "player_color": "white"},
-        "lichess.org": {"top_left": None, "bottom_right": None, "player_color": "white"}
+        "lichess.org": {"top_left": None, "bottom_right": None, "player_color": "white"},
+        "chessclub.com": {"top_left": None, "bottom_right": None, "player_color": "white"}
     })
 
     # Backward compatibility / Active session state
